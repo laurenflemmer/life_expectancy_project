@@ -1,0 +1,465 @@
+---
+title: "Stat230a Final Project (Life Expectancy)"
+author: "Lauren Flemmer"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(Hmisc)
+library(corrplot)
+library(stringr)
+library(gridExtra)
+library(geepack)
+library(stats)
+library(factoextra)
+
+set.seed(230)
+```
+
+
+### Read in data
+```{r}
+lifeExpectancy <- read.csv('/Users/laurenflemmer/Desktop/life_expectancy_proj/Life Expectancy Data.csv')
+
+lifeExpectancy <- lifeExpectancy %>% drop_na()
+
+head(lifeExpectancy, 5)
+
+colSums(is.na(lifeExpectancy))
+
+```
+
+### To determine which model is appropriate, plot diagnostics
+```{r, warning=FALSE}
+par(mfrow=c(2,2))
+# diagnostic plots
+basic_model <- lm(Life.expectancy ~ ., data = lifeExpectancy)
+plot(basic_model)
+
+```
+
+```{r, warning=FALSE}
+# plot response
+ggplot(data=lifeExpectancy) +
+geom_histogram(mapping=aes(x=Life.expectancy), bins=10) +
+ggtitle("Distribution of life expectancy")
+
+ggplot(data=lifeExpectancy) +
+geom_boxplot(mapping=aes(x=Country, y=Life.expectancy, color=Country), bins=10) +
+ggtitle("Life Expectancy by Country") + 
+theme(legend.position = "none") +
+coord_flip() + 
+theme(axis.text.x = element_text(angle = 80, vjust = 0.5, hjust=1, size=0.01))
+
+
+# correlation plot
+# include only continuous vars
+# removed percentage expenditure bc redundant
+continuous_vars <- lifeExpectancy %>% select(Year, Life.expectancy, 
+                                             Adult.Mortality, infant.deaths, 
+                                             Alcohol, Hepatitis.B, Measles, BMI,
+                                             under.five.deaths, Polio, Total.expenditure,
+                                             Diphtheria, HIV.AIDS, GDP, Population, 
+                                             thinness..1.19.years, thinness.5.9.years,
+                                             Income.composition.of.resources, Schooling)
+
+
+corMat <- cor(continuous_vars)
+corrplot(corMat, type="lower", method="circle",  tl.cex = 0.75)
+#corMat
+```
+
+##### Variables correlated with life expectancy (|r| > 0.4):
+- Adult mortality rate
+- Alcohol intake
+- BMI
+- HIV/AIDS
+- GDP
+- Prevalence of thinness among ages 10-19
+- Prevalence in thinness among ages 5-9
+- Human Development Index (in terms of income composition of resources)
+- Number of years of schooling 
+
+-----
+
+## EDA for variables correlated with life expectancy
+```{r}
+# adult mortality vs. life expectancy
+ggplot(data=lifeExpectancy) +
+  geom_point(mapping=aes(x=Adult.Mortality, y=Life.expectancy, color=Status)) + 
+  ggtitle("Adult Mortality Rate vs. Life Expectancy") +
+  xlab("Adult Mortality Rate (deaths per 1,000 individuals per year)") + 
+  ylab("Life Expectancy")
+
+
+# alcohol intake vs life expectancy
+ggplot(data=lifeExpectancy) +
+  geom_point(mapping=aes(x=Alcohol, y=Life.expectancy, color=Status)) + 
+  ggtitle("Alcohol Intake vs. Life Expectancy") +
+  xlab("Alcohol Intake (average liters per individual)") + 
+  ylab("Life Expectancy")
+
+# bmi vs. life expectancy
+ggplot(data=lifeExpectancy) +
+  geom_point(mapping=aes(x=BMI, y=Life.expectancy, color=Status)) + 
+  ggtitle("BMI vs. Life Expectancy") +
+  xlab("BMI") + 
+  ylab("Life Expectancy")
+
+# hiv/aids vs life expectancy
+ggplot(data=lifeExpectancy) +
+  geom_point(mapping=aes(x=HIV.AIDS, y=Life.expectancy, color=Status)) + 
+  ggtitle("HIV/AIDS deaths vs. Life Expectancy") +
+  xlab("HIV/AIDS Deaths (0-4 years)") + 
+  ylab("Life Expectancy")
+
+# gdp vs life expectancy
+gdp_plot <- ggplot(data=lifeExpectancy) +
+  geom_point(mapping=aes(x=GDP, y=Life.expectancy, color=Status)) + 
+  ggtitle("GDP vs. Life Expectancy") +
+  xlab("GDP per capita (USD)") + 
+  ylab("Life Expectancy")
+
+gdp_log_plot <- ggplot(data=lifeExpectancy) +
+  geom_point(mapping=aes(x=log(GDP), y=Life.expectancy, color=Status)) + 
+  ggtitle("log(GDP) vs. Life Expectancy") +
+  xlab("log(GDP) per capita (USD)") + 
+  ylab("Life Expectancy")
+
+grid.arrange(gdp_plot, gdp_log_plot)
+
+
+# prevalence of thinness (ages 10-19)
+ggplot(data=lifeExpectancy) +
+  geom_point(mapping=aes(x=thinness..1.19.years, y=Life.expectancy, color=Status)) + 
+  ggtitle("Prevalence of Thinness (ages 10-19) vs. Life Expectancy") +
+  xlab("Prevalence of Thinness for ages 10-19 (%)") + 
+  ylab("Life Expectancy")
+
+# prevalence of thinness (ages 5-9)
+ggplot(data=lifeExpectancy) +
+  geom_point(mapping=aes(x=thinness.5.9.years, y=Life.expectancy, color=Status)) + 
+  ggtitle("Prevalence of Thinness (ages 5-9) vs. Life Expectancy") +
+  xlab("Prevalence of Thinness for ages 5-9 (%)") + 
+  ylab("Life Expectancy")
+
+
+# human development index vs. life expectancy
+ggplot(data=lifeExpectancy) +
+  geom_point(mapping=aes(x=Income.composition.of.resources, y=Life.expectancy, color=Status)) + 
+  ggtitle("Human Development Index vs. Life Expectancy") +
+  xlab("Human Development Index") + 
+  ylab("Life Expectancy")
+
+
+# years of schooling vs. life expectancy
+ggplot(data=lifeExpectancy) +
+  geom_point(mapping=aes(x=Schooling, y=Life.expectancy, color=Status)) + 
+  ggtitle("Schooling vs. Life Expectancy") +
+  xlab("Years of Schooling") + 
+  ylab("Life Expectancy")
+```
+
+## EDA for non-continuous variables
+```{r}
+# status vs. life expectancy
+developing_expectancy <- lifeExpectancy %>% filter(Status == "Developing") %>% select(Life.expectancy)
+developed_expectancy <- lifeExpectancy %>% filter(Status == "Developed") %>% select(Life.expectancy)
+
+boxplot_developing <- ggplot(data=developing_expectancy) +
+  geom_boxplot(mapping=aes(x=Life.expectancy)) + 
+  ggtitle("Life Expectancy for Developing Countries") +
+  xlab("Life Expectancy")
+
+boxplot_developed <- ggplot(data=developed_expectancy) +
+  geom_boxplot(mapping=aes(x=Life.expectancy)) + 
+  ggtitle("Life Expectancy for Developed Countries") +
+  xlab("Life Expectancy")
+
+grid.arrange(boxplot_developing, boxplot_developed)
+
+```
+
+----
+
+# Initial modeling using 'geeglm' package
+## Model 1 (Independent correlation structure, gaussian) Predictors:
+- Status (Developed/Developing)
+- Adult mortality rate
+- Alcohol intake
+- BMI
+- HIV/AIDS
+- log(GDP)
+- Prevalence of thinness among ages 10-19
+- Prevalence in thinness among ages 5-9
+- Human Development Index (in terms of income composition of resources)
+- Number of years of schooling 
+
+```{r}
+# convert country to factor
+lifeExpectancy$Country <- as.factor(lifeExpectancy$Country)
+
+# convert HDI from 0-1 to 0-100 for better interpretability of model estimates
+lifeExpectancy$Income.composition.of.resources <- lifeExpectancy$Income.composition.of.resources * 100
+```
+
+
+```{r}
+# fit initial model
+initialModel <- geeglm(formula = Life.expectancy ~ Status + Year + Adult.Mortality + Alcohol + BMI 
+                              + HIV.AIDS + log(GDP) + thinness..1.19.years + thinness.5.9.years
+                              + Income.composition.of.resources + Schooling, id = Country, 
+                              data = lifeExpectancy, family = "gaussian")
+summary(initialModel)$coefficients
+
+
+# plot residuals
+initialResid <- as.vector(initialModel$residuals)
+mean_abs_resid_initial <- mean(abs(initialResid))
+
+ggplot() +
+  geom_histogram(aes(initialResid)) +
+  ggtitle(label = "Residuals of initial model \n(independent correlation structure, gaussian)",
+      subtitle = paste("Mean absolute error: ", mean_abs_resid_initial))
+
+```
+
+## Model 2 (Independent correlation structure) Predictors:
+##### (Backward selection done using Robust Z)
+- Status (Developed/Developing)
+- Adult mortality rate
+- Alcohol intake
+- BMI
+- HIV/AIDS
+- log(GDP)
+- Human Development Index (in terms of income composition of resources)
+- Number of years of schooling 
+
+```{r}
+# fit second model
+secondModel <- geeglm(formula = Life.expectancy ~ Status + Year + Adult.Mortality + Alcohol + BMI + 
+                                HIV.AIDS + log(GDP) + Income.composition.of.resources + Schooling, 
+                                id = Country, data = lifeExpectancy, family = "gaussian")
+summary(secondModel)$coefficients
+
+
+# plot residuals
+secondResid <- as.vector(secondModel$residuals)
+mean_abs_resid_second <- mean(abs(secondResid))
+
+ggplot() +
+  geom_histogram(aes(secondResid)) +
+  ggtitle(label = "Residuals of second model \n(independent correlation structure)",
+      subtitle = paste("Mean absolute error: ", mean_abs_resid_second))
+```
+-----
+
+## "AR1" correlation
+## Model 1 (AR1 correlation structure)Predictors:
+- Status (Developed/Developing)
+- Adult mortality rate
+- Alcohol intake
+- BMI
+- HIV/AIDS
+- log(GDP)
+- Prevalence of thinness among ages 10-19
+- Prevalence in thinness among ages 5-9
+- Human Development Index (in terms of income composition of resources)
+- Number of years of schooling 
+```{r}
+# fit initial model
+initialModel_ar1 <- geeglm(formula = Life.expectancy ~ Status + Year + Adult.Mortality + Alcohol + BMI 
+                              + HIV.AIDS + log(GDP) + thinness..1.19.years + thinness.5.9.years
+                              + Income.composition.of.resources + Schooling, id = Country, 
+                              data = lifeExpectancy, corstr = "ar1", family = "gaussian")
+summary(initialModel_ar1)$coefficients
+
+
+# plot residuals
+initialResid_ar1 <- as.vector(initialModel_ar1$residuals)
+mean_abs_resid_initial_ar1 <- mean(abs(initialResid_ar1))
+
+ggplot() +
+  geom_histogram(aes(initialResid_ar1)) +
+  ggtitle(label = "Residuals of initial model \n(AR1 correlation structure)",
+      subtitle = paste("Mean absolute error: ", mean_abs_resid_initial_ar1))
+
+```
+
+## Using AR1 Correlation structure, perform backwards selection of predictors
+## Model 2 (AR1 Correlation Structure) Predictors:
+- Status (Developed/Developing)
+- Year
+- HIV/AIDS
+- Human Development Index (in terms of income composition of resources)
+- Number of years of schooling 
+```{r}
+# fit initial model
+model2_ar1 <- geeglm(formula = Life.expectancy ~ Status + Year + HIV.AIDS
+                              + Income.composition.of.resources + Schooling, id = Country, 
+                              data = lifeExpectancy, corstr = "ar1", family = "gaussian")
+summary(model2_ar1)$coefficients
+
+
+# plot residuals
+model2Resid_ar1 <- as.vector(model2_ar1$residuals)
+mean_abs_resid_model2_ar1 <- mean(abs(model2Resid_ar1))
+
+ggplot() +
+  geom_histogram(aes(model2Resid_ar1)) +
+  ggtitle(label = "Residuals of Model 2 \n(AR1 correlation structure)",
+      subtitle = paste("Mean absolute error: ", mean_abs_resid_model2_ar1))
+
+```
+---
+# Compare Independent vs. AR-1 Standard Error:
+##### (Same predictors in both models)
+- Status (Developed/Developing)
+- Adult mortality rate
+- HIV/AIDS
+- Human Development Index (in terms of income composition of resources)
+- Number of years of schooling 
+
+```{r}
+# fit independent model w/ same predictors as final AR-1 model to compare standard errors
+testIndepModel <- geeglm(formula = Life.expectancy ~ Status + Year + HIV.AIDS
+                                + Income.composition.of.resources + Schooling, 
+                                id = Country, data = lifeExpectancy, family = "gaussian")
+
+summary(testIndepModel)$coefficients
+
+```
+
+
+---
+
+## Using AR-1 Model 2, Examine Predicted vs. Actual Values
+
+```{r}
+fitted_vals <- model2_ar1$fitted.values
+actual_vals <- lifeExpectancy$Life.expectancy
+actual_fitted_df <- as.data.frame(cbind(fitted_vals, actual_vals, model2Resid_ar1))
+names(actual_fitted_df)[1] <- "fitted_vals"
+names(actual_fitted_df)[3] <- "Residual"
+
+
+ggplot(actual_fitted_df) +
+  geom_point(aes(x=actual_vals, fitted_vals, color=Residual)) +
+  ggtitle("Actual vs. Fitted Values for AR-1 Model 2") +
+  xlab("Actual Life Expectancy") +
+  ylab("Predicted Life Expectancy")
+```
+
+
+## Feature Importance in AR-1 Model 2
+```{r}
+feature_names <- c("Development \n Status", "Year", "HIV/AIDS Deaths", "Human Development  \n Index", "Years of Schooling")
+abs_coeff <- abs(model2_ar1$coefficients[-1])
+
+ggplot() +
+  geom_col(aes(x=feature_names, y=abs_coeff), fill = "dark blue") +
+  ggtitle("Feature Importance of AR-1 Model 2") +
+  xlab("Feature") +
+  ylab("Absolute Value of Coefficient")
+```
+
+-----
+
+## Exploring new clustering based on similarity of countries
+### K-Means to create new country clusters
+```{r}
+
+kmeans_vars <- continuous_vars[, c(-1, -2, -18)]
+
+k_vec <- 3:30
+tot_within_SS <- c()
+
+# Cross-Validate to find the best K, which minimizes the total within cluster sum of squares
+for (k in k_vec) {
+  
+  clustering_k <- kmeans(kmeans_vars, centers=k, nstart=10, iter.max=100)
+  tot_within_SS <- c(tot_within_SS, clustering_k$tot.withinss)
+
+}
+
+# plot K vs. total within-cluster SS
+ggplot() +
+  geom_line(aes(x=k_vec, y=tot_within_SS), color="blue", lwd = 1) +
+  ggtitle("Total Within-Cluster Sum of Squares for K = (3, 4, ..., 30)") + 
+  xlab("K") +
+  ylab("Total Within-Cluster SS")
+
+```
+
+### Optimal number of clusters: K = 10
+```{r}
+# perform final clustering
+kmeans10 <- kmeans(kmeans_vars, centers=10, nstart=10)
+new_clusters <- factor(kmeans10$cluster)
+
+```
+
+### Compare human development index values for cluster members
+```{r}
+HDI <- lifeExpectancy$Income.composition.of.resources
+
+# get countries belonging to each cluster
+lifeExpectancy$cluster <- new_clusters
+countries_cluster <- lifeExpectancy %>% group_by(cluster) %>% summarise(countries = str_c(unique(Country), collapse = ", "))
+
+ggplot() +
+  geom_boxplot(aes(x=new_clusters, y=HDI, fill=new_clusters)) +
+  ggtitle("Human Development Index of New Cluster Members") +
+  xlab("Cluster")
+
+```
+
+---
+
+##### Countries in Cluster 1: Algeria, Argentina, Colombia, Italy, Kenya, Myanmar, Poland, South Africa, Spain, Uganda, Ukraine
+##### Countries in Cluster 2: Afghanistan, Albania, Algeria, Angola, Argentina, Armenia, Australia, Belgium, Bosnia and Herzegovina, Botswana, Brazil, Cameroon, Canada, Central African Republic, Colombia, Costa Rica, Croatia, Eritrea, Ghana, Greece, Indonesia, Iraq, Ireland, Jamaica, Jordan, Kenya, Latvia, Lebanon, Lesotho, Liberia, Lithuania, Madagascar, Malaysia, Mauritania, Mongolia, Morocco, Mozambique, Myanmar, Namibia, Nepal, Nicaragua, Panama, Papua New Guinea, Peru, Poland, Romania, Senegal, South Africa, Spain, Syrian Arab Republic, Tunisia, Turkmenistan, Uganda, Ukraine, Uruguay, Uzbekistan
+##### Countries in Cluster 3: Ethiopia, France, Germany, Philippines, Thailand, Turkey
+##### Countries in Cluster 4: Afghanistan, Algeria, Angola, Australia, Brazil, Canada, Ghana, Indonesia, Iraq, Madagascar, Malaysia, Morocco, Mozambique, Nepal, Peru, Romania, Uganda
+##### Countries in Cluster 5: Brazil, Indonesia, Pakistan
+##### Countries in Cluster 6: Austria, Azerbaijan, Belarus, Belgium, Benin, Bulgaria, Burundi, Chad, Dominican Republic, El Salvador, France, Germany, Greece, Guinea, Honduras, Italy, Jordan, Mexico, Myanmar, Nicaragua, Papua New Guinea, Paraguay, Philippines, Rwanda, Senegal, Serbia, Sierra Leone, South Africa, Sweden, Tajikistan, Thailand, Togo, Tunisia, Turkey
+##### Countries in Cluster 7: Bangladesh, India, Mexico, Nigeria, Russian Federation
+##### Countries in Cluster 8: Afghanistan, Bangladesh, Brazil, Burkina Faso, Cambodia, Cameroon, Chad, Chile, Ecuador, Ghana, Guatemala, India, Indonesia, Kazakhstan, Madagascar, Malawi, Mali, Mexico, Mozambique, Netherlands, Niger, Nigeria, Pakistan, Romania, Russian Federation, Senegal, Syrian Arab Republic, Zambia, Zimbabwe
+##### Countries in Cluster 9: Afghanistan, Albania, Algeria, Angola, Argentina, Armenia, Australia, Austria, Azerbaijan, Bangladesh, Belarus, Belgium, Belize, Benin, Bhutan, Bosnia and Herzegovina, Botswana, Brazil, Bulgaria, Burkina Faso, Burundi, Cabo Verde, Cambodia, Cameroon, Canada, Central African Republic, Chad, Chile, China, Colombia, Comoros, Costa Rica, Croatia, Cyprus, Djibouti, Dominican Republic, Ecuador, El Salvador, Equatorial Guinea, Eritrea, Estonia, Ethiopia, Fiji, France, Gabon, Georgia, Germany, Ghana, Greece, Guatemala, Guinea, Guinea-Bissau, Guyana, Haiti, Honduras, Iraq, Ireland, Israel, Italy, Jamaica, Jordan, Kazakhstan, Kenya, Kiribati, Latvia, Lebanon, Lesotho, Liberia, Lithuania, Luxembourg, Madagascar, Malawi, Malaysia, Maldives, Mali, Malta, Mauritania, Mauritius, Mexico, Mongolia, Montenegro, Morocco, Mozambique, Myanmar, Namibia, Netherlands, Nicaragua, Niger, Nigeria, Pakistan, Panama, Papua New Guinea, Paraguay, Peru, Philippines, Poland, Portugal, Romania, Russian Federation, Rwanda, Samoa, Sao Tome and Principe, Senegal, Serbia, Seychelles, Sierra Leone, Solomon Islands, South Africa, Spain, Sri Lanka, Suriname, Swaziland, Sweden, Syrian Arab Republic, Tajikistan, Thailand, Timor-Leste, Togo, Tonga, Trinidad and Tobago, Tunisia, Turkey, Turkmenistan, Uganda, Ukraine, Uruguay, Uzbekistan, Vanuatu, Zambia, Zimbabwe
+##### Countries in Cluster 10: India
+
+---
+
+## Fit Model 1 using new clusters
+### Model 1 (Unstructured correlation structure, clustering by K-Means clusters):
+```{r}
+# fit initial model
+initialModel_clusters <- geeglm(formula = Life.expectancy ~ Status + Year + Adult.Mortality + Alcohol + BMI 
+                              + HIV.AIDS + log(GDP) + thinness..1.19.years + thinness.5.9.years
+                              + Income.composition.of.resources + Schooling, id = cluster, 
+                              data = lifeExpectancy, corstr = "unstructured", family = "gaussian")
+summary(initialModel_clusters)$coefficients
+
+
+# plot residuals
+initialResid_clusters <- as.vector(initialModel_clusters$residuals)
+mean_abs_resid_initial_clusters <- mean(abs(initialResid_clusters))
+
+ggplot() +
+  geom_histogram(aes(initialResid_clusters)) +
+  ggtitle(label = "Residuals of initial model \n(unstructured correlation structure, clusters from K-Means)",
+      subtitle = paste("Mean absolute error: ", mean_abs_resid_initial_clusters))
+
+```
+
+### Comparing standard errors from clustering by Country vs. K-Means
+```{r}
+summary(initialModel_ar1)$coefficients
+summary(initialModel_clusters)$coefficients
+```
